@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>中式八球 · 台球对战</title>
+  <meta name="description" content="HTML5 Canvas 原生 JavaScript 实现的中式八球小游戏，支持双人对战与 AI 对手。" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ==================== 顶部标题栏 ==================== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo-ball" aria-hidden="true">8</div>
+      <div>
+        <h1>中式八球</h1>
+        <p>Billiards · Canvas 物理对战</p>
+      </div>
+    </div>
+
+    <div class="top-actions">
+      <button class="ghost-btn" id="focusBtn" type="button" aria-pressed="false">全屏</button>
+      <button class="ghost-btn" id="soundBtn" type="button" aria-pressed="true">音效：开</button>
+      <button class="ghost-btn" id="helpBtn" type="button">规则说明</button>
+    </div>
+  </header>
+
+  <!-- ==================== 主区域 ==================== -->
+  <main class="layout">
+    <!-- 左侧：球台 + 力度条 + 状态 -->
+    <section class="table-panel" id="tablePanel" aria-label="球台">
+      <button class="focus-exit" id="focusExit" type="button" hidden>退出全屏</button>
+      <p class="rotate-hint">横屏体验更佳 · 拖动台面瞄准</p>
+      <div class="canvas-wrap">
+        <canvas id="gameCanvas" width="1008" height="558" aria-label="中式八球球台"></canvas>
+
+        <!-- 游戏结束遮罩 -->
+        <div class="result-overlay" id="resultOverlay" hidden>
+          <div class="result-card">
+            <p class="result-kicker">GAME OVER</p>
+            <h2 id="resultTitle">玩家 1 获胜</h2>
+            <p id="resultReason">合法打进 8 号球</p>
+            <button class="primary-btn" id="resultRestart" type="button">再来一局</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 自由力度：滑杆选择力度，按“击球”出杆 -->
+      <div class="power-row" aria-label="击球力度">
+        <div class="power-main">
+          <div class="power-meta">
+            <span class="power-label">击球力度</span>
+            <span class="power-value" id="powerValue">55%</span>
+          </div>
+          <div class="power-track" id="powerTrack">
+            <div class="power-fill" id="powerFill"></div>
+            <div class="power-handle" id="powerHandle" aria-hidden="true"></div>
+            <input
+              class="power-range"
+              id="powerRange"
+              type="range"
+              min="5"
+              max="100"
+              step="1"
+              value="55"
+              aria-label="拖动选择击球力度"
+            />
+          </div>
+          <div class="power-scale" aria-hidden="true">
+            <span>轻</span><span>中</span><span>重</span>
+          </div>
+        </div>
+        <button class="shoot-btn" id="shootBtn" type="button">
+          <span>击球</span>
+          <small>空格 / 点击</small>
+        </button>
+      </div>
+
+      <!-- 状态提示 -->
+      <p class="status-text" id="statusText">玩家 1 开球</p>
+      <p class="hint-text" id="hintText">拖动台面瞄准，选择力度后点击“击球”</p>
+
+      <!-- 击球微调：角度旋钮 + 母球加塞 -->
+      <div class="shot-controls" aria-label="击球微调">
+        <div class="control-block">
+          <span class="control-label">角度微调</span>
+          <div class="knob" id="angleKnob" role="slider" tabindex="0"
+               aria-label="角度微调旋钮" aria-valuemin="0" aria-valuemax="360" aria-valuenow="0">
+            <div class="knob-ticks" aria-hidden="true"></div>
+            <div class="knob-needle" id="knobNeedle" aria-hidden="true"></div>
+            <div class="knob-hub"><span id="angleValue">0.0°</span></div>
+          </div>
+          <div class="knob-actions">
+            <button type="button" class="mini-btn" data-angle-step="-1" title="逆时针 1°">−1°</button>
+            <button type="button" class="mini-btn" data-angle-step="-0.2" title="逆时针 0.2°">−0.2°</button>
+            <button type="button" class="mini-btn" data-angle-step="0.2" title="顺时针 0.2°">+0.2°</button>
+            <button type="button" class="mini-btn" data-angle-step="1" title="顺时针 1°">+1°</button>
+          </div>
+          <p class="control-note">拖拽旋钮，或按 ← → 微调（按住 Shift 精调 0.2°）</p>
+        </div>
+
+        <div class="control-block">
+          <span class="control-label">母球加塞</span>
+          <div class="spin-pad" id="spinPad" role="group" aria-label="选择母球击球点">
+            <span class="spin-axis spin-axis-x" aria-hidden="true"></span>
+            <span class="spin-axis spin-axis-y" aria-hidden="true"></span>
+            <span class="spin-ring" aria-hidden="true"></span>
+            <span class="spin-dot" id="spinDot" aria-hidden="true"></span>
+          </div>
+          <div class="spin-readout">
+            <span id="spinValue">无塞</span>
+            <button type="button" class="mini-btn" id="spinReset">回正</button>
+          </div>
+          <p class="control-note">点击或拖动球面：上=跟进，下=缩杆，左右=侧旋</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右侧：控制面板 -->
+    <aside class="sidebar">
+      <!-- 模式选择 -->
+      <section class="panel">
+        <h2 class="panel-title">对局模式</h2>
+        <div class="segmented" id="modeSwitch" role="group" aria-label="对局模式">
+          <button type="button" data-mode="pvp" class="active">双人对战</button>
+          <button type="button" data-mode="ai">人机对战</button>
+        </div>
+
+        <label class="select-row" id="difficultyRow">
+          <span>AI 难度</span>
+          <select id="difficulty">
+            <option value="easy">简单</option>
+            <option value="normal" selected>普通</option>
+            <option value="hard">挑战</option>
+          </select>
+        </label>
+      </section>
+
+      <!-- 比分板 -->
+      <section class="scoreboard" aria-label="比分">
+        <article class="player-card" id="playerCard0">
+          <div class="player-head">
+            <span class="turn-dot" aria-hidden="true"></span>
+            <span class="player-name">玩家 1</span>
+            <span class="turn-badge">击球中</span>
+          </div>
+          <div class="player-meta">
+            <span class="group-badge">未定组</span>
+            <span class="score-text">进球 0</span>
+            <span class="foul-text">犯规 0</span>
+          </div>
+          <div class="ball-row" aria-label="己方球"></div>
+        </article>
+
+        <article class="player-card" id="playerCard1">
+          <div class="player-head">
+            <span class="turn-dot" aria-hidden="true"></span>
+            <span class="player-name">玩家 2</span>
+            <span class="turn-badge">击球中</span>
+          </div>
+          <div class="player-meta">
+            <span class="group-badge">未定组</span>
+            <span class="score-text">进球 0</span>
+            <span class="foul-text">犯规 0</span>
+          </div>
+          <div class="ball-row" aria-label="己方球"></div>
+        </article>
+      </section>
+
+      <!-- 对局记录 -->
+      <section class="panel log-panel">
+        <h2 class="panel-title">对局记录</h2>
+        <ul class="log-list" id="logList" aria-live="polite"></ul>
+      </section>
+
+      <button class="primary-btn wide" id="restartBtn" type="button">重新开始</button>
+    </aside>
+  </main>
+
+  <footer class="footer">
+    <p>《人工智能基础技术及应用》期末大作业 · HTML5 Canvas + 原生 JavaScript</p>
+    <p class="mono">碰撞检测 · 物理运动 · 状态机 · 游戏循环 · 启发式 AI</p>
+  </footer>
+
+  <!-- ==================== 规则弹窗 ==================== -->
+  <div class="modal" id="helpModal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+      <div class="modal-head">
+        <h2 id="helpTitle">玩法与规则</h2>
+        <button class="icon-btn" id="closeHelp" type="button" aria-label="关闭">×</button>
+      </div>
+
+      <div class="modal-body">
+        <h3>基本操作</h3>
+        <ul>
+          <li><strong>瞄准</strong>：在台面移动鼠标或滑动手指，白球到指针方向即为击球方向；虚线会预测首个碰撞点。</li>
+          <li><strong>自由力度</strong>：拖动“击球力度”滑杆，力度会保留到下一次击球；也可用 <kbd>↑</kbd> / <kbd>↓</kbd> 调整。选好后点击“击球”或按 <kbd>空格</kbd>。</li>
+          <li><strong>角度微调</strong>：拖拽右下角旋钮，或按 <kbd>←</kbd> / <kbd>→</kbd>（每次 1°，按住 <kbd>Shift</kbd> 为 0.2°），也可点击 −1° / +1° 等按钮。</li>
+          <li><strong>加塞</strong>：在“母球加塞”圆盘上点击或拖动，选择击球点。上=高杆（跟进），下=低杆（缩杆），左右=侧旋。</li>
+          <li><strong>开球 / 自由球</strong>：白球会以绿色光圈提示；直接拖动白球，或点击台面合法位置摆放，然后选择力度击球。</li>
+          <li><strong>手机</strong>：支持触屏拖动瞄准；点击右上角“全屏”可获得更大的操作区域，横屏效果更佳。</li>
+        </ul>
+
+        <h3>加塞（侧旋）说明</h3>
+        <ul>
+          <li><strong>高杆</strong>：击打母球中心上方，碰撞后母球会继续向前“跟”一段。</li>
+          <li><strong>低杆</strong>：击打母球中心下方，碰撞后母球会向回“缩”。</li>
+          <li><strong>左右塞</strong>：击打母球左右两侧，碰撞后母球产生横向偏移，碰库后反弹角也会改变。</li>
+          <li>塞越重，效果越明显，但走位更难控制；加塞不会改变瞄准线的几何预测，只影响碰撞后的运动。</li>
+        </ul>
+
+        <h3>中式八球规则（课程简化版）</h3>
+        <ul>
+          <li><strong>球组</strong>：全色球 1–7，花色球 9–15，8 号球为黑球。开球后首次合法进球决定双方球组。</li>
+          <li><strong>继续击球</strong>：合法打进己方球，可继续击球；未进己方球则交换回合。</li>
+          <li><strong>犯规</strong>：白球落袋、空杆（未碰到任何球）、先碰对方球、未清台时先碰 8 号球、击球后无球碰库且无进球。</li>
+          <li><strong>自由球</strong>：开球前和犯规后，可把白球拖动或点击放到台面任意合法位置。</li>
+          <li><strong>打进对方球</strong>：不犯规，球算给对方；若没有同时打进己方球，则交换回合。</li>
+          <li><strong>胜负</strong>：清完己方 7 颗球后，合法打进 8 号球获胜；提前打进 8 号球，或打 8 号球时白球落袋，判负。</li>
+          <li><strong>计分</strong>：每合法打进一颗己方球得 1 分，犯规次数单独统计。</li>
+        </ul>
+
+        <h3>人机对战</h3>
+        <p>电脑会枚举“目标球 × 袋口”组合，计算假想球位置、切球角度与路径遮挡，选择最优线路自动击球。难度越高，瞄准误差越小。</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
